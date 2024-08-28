@@ -63,6 +63,8 @@ impl From<Iterations> for u64 {
     }
 }
 
+const DELTA: usize = 1;
+
 impl fmt::Display for ParseIterationsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind {
@@ -120,7 +122,7 @@ fn cache_indices_for_count(t: Iterations) -> Vec<u64> {
     for _ in 0..i {
         curr_t >>= 1;
         intermediate_ts.push(curr_t);
-        if curr_t & 1 != 0 {
+        if curr_t & 1 != 0 && curr_t != 1 {
             curr_t += 1
         }
     }
@@ -166,7 +168,7 @@ where
     let discriminant = super::create_discriminant::create_discriminant(&challenge, int_size_bits);
     let x = T::from_ab_discriminant(2.into(), 1.into(), discriminant);
 
-    let delta = 8;
+    let delta = DELTA;
     let powers_to_calculate = cache_indices_for_count(iterations);
     let powers = iterate_squarings(x.clone(), powers_to_calculate.iter().cloned());
     let proof: Vec<T> = generate_proof(
@@ -219,7 +221,7 @@ where
         &y,
         proof,
         iterations,
-        8,
+        DELTA,
         &generate_r_value,
         length_in_bits.into(),
     )
@@ -270,18 +272,20 @@ where
 
     let final_t = calculate_final_t(iterations, delta);
 
-    let mut round_index = 0;
+    let mut round_index: u64 = 0;
     while curr_t != final_t {
         assert_eq!(curr_t & 1, 0);
         let half_t = curr_t >> 1;
         ts.push(half_t);
-        assert!(round_index < 63);
+        const MAX_BITS: u64 = 64; // we use u64
+        assert!(round_index < MAX_BITS-1); // 63 because we use (round_index+1)
         let denominator: u64 = 1 << (round_index + 1);
 
         mus.push(if round_index < i {
             let mut mu = identity.clone();
             for numerator in (1..denominator).step_by(2) {
-                let num_bits = 62 - denominator.leading_zeros() as usize;
+                // MAX_BITS-2 because -1 for (round_index+1), and another -1 because we're using this to index in a 0-indexed array
+                let num_bits = (MAX_BITS as u32 -2 - denominator.leading_zeros()) as usize;
                 let mut r_prod: V::BigNum = One::one();
                 for b in (0..num_bits).rev() {
                     if 0 == (numerator & (1 << (b + 1))) {
@@ -320,7 +324,7 @@ where
         mu *= y_p.last().unwrap();
         y_p.push(mu);
         curr_t >>= 1;
-        if curr_t & 1 != 0 {
+        if curr_t & 1 != 0 && curr_t != 1 {
             curr_t += 1;
             y_p.last_mut().unwrap().square();
         }
@@ -369,7 +373,7 @@ where
         y *= &mu;
 
         curr_t >>= 1;
-        if curr_t & 1 != 0 {
+        if curr_t & 1 != 0 && curr_t != 1 {
             curr_t += 1;
             y.square();
         }
